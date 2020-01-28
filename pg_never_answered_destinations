@@ -1,0 +1,36 @@
+| dbxquery
+connection="bi_db_1"
+timeout=1800 query="
+SELECT a.destinationnumber, a.calls, b.calls as answered_calls
+FROM
+(
+SELECT
+       destinationnumber,
+       count(guid) as calls
+FROM   pg_fs_fe_cdr
+WHERE  datekey >= CURRENT_DATE - CAST(EXTRACT(DOW FROM CURRENT_DATE) as int) - 7 AND
+       datekey  < CURRENT_DATE - CAST(EXTRACT(DOW FROM CURRENT_DATE) as int) AND
+       direction = 'INBOUND' AND
+       calldispositions IN ('UNANSWERED','BUSY','FAILED')
+GROUP BY
+         destinationnumber
+ORDER BY
+         count(guid) DESC
+) a LEFT OUTER JOIN   
+(   
+SELECT
+       destinationnumber,
+       count(guid) as calls
+FROM   pg_fs_fe_cdr
+WHERE  datekey >= CURRENT_DATE - CAST(EXTRACT(DOW FROM CURRENT_DATE) as int) - 7 AND
+       datekey  < CURRENT_DATE - CAST(EXTRACT(DOW FROM CURRENT_DATE) as int) AND
+       direction = 'INBOUND' AND
+       calldispositions IN ('ANSWERED')
+GROUP BY
+         destinationnumber
+ORDER BY
+         count(guid) DESC
+) b ON a.destinationnumber=b.destinationnumber
+WHERE b.calls IS NULL
+" shortnames=t
+| table destinationnumber
