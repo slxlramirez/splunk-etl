@@ -1,0 +1,64 @@
+| dbxquery 
+connection=kingcounty_dhs_seattle
+timeout=1800 
+query="
+SELECT s.guid,
+       s.sourcenumber,
+       s.sourceregion,
+       s.destinationnumber,
+       s.destinationregion,
+       s.direction,
+       s.routername,
+       s.datekey,
+       s.analyticstime_t,
+       t.calldispositions,
+       t.codecs,
+       t.duration,
+       t.offsetms,
+       t.starttime,
+       t.connecttime,
+       t.endtime
+FROM
+(
+SELECT
+  a.guid,
+  CASE a.direction
+   WHEN 1 THEN 'INBOUND'
+   WHEN 2 THEN 'OUTBOUND'
+   ELSE 'OTHER'
+  END as direction,
+  a.sourcenumber,
+  a.sourceregion,
+  a.destinationnumber,
+  a.destinationregion,
+  a.routername,
+  date_trunc('day',to_timestamp(a.analyticstime/1000)) as datekey,
+  to_timestamp(a.analyticstime/1000) at time zone 'GMT' as analyticstime_t
+FROM
+  master.flowstart a
+WHERE a.guid IN
+(
+  SELECT guid
+  FROM master.flowend b
+  WHERE b.analyticstime >= (extract('epoch' from (now() - interval '1 hour'))*1000)::bigint
+) AND
+  a.analyticstime >= (extract('epoch' from (now() - interval '1 hour'))*1000)::bigint
+) s LEFT OUTER JOIN
+(
+SELECT
+  b.guid,
+  REPLACE((b.meta::json->'callDispositions')::varchar,'\"','') as calldispositions,
+  REPLACE((b.meta::json->'codecs')::varchar,'\"','') as codecs,
+  COALESCE(b.duration,0) as duration,
+  COALESCE(b.offsetms,0) as offsetms,
+  to_timestamp((b.flowtime - b.offsetMs)/1000) at time zone 'GMT' as starttime,
+  CASE
+   WHEN b.duration=0 THEN NULL
+   ELSE to_timestamp((b.flowtime - b.duration)/1000) at time zone 'GMT'
+  END as connecttime,
+  to_timestamp(b.flowtime/1000) at time zone 'GMT' as endtime
+FROM
+  master.flowend b
+WHERE b.analyticstime >= (extract('epoch' from (now() - interval '1 hour'))*1000)::bigint
+) t ON s.guid=t.guid
+" shortnames=t
